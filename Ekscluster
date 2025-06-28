@@ -1,0 +1,93 @@
+pipeline {
+  agent none
+
+  environment {
+    AWS_REGION = 'ap-south-1'  // Update as needed
+    CLUSTER_NAME = 'my-eks-cluster'
+    KUBECONFIG = credentials('eks-kubeconfig') // Jenkins credential
+  }
+
+  stages {
+
+    stage('Checkout Source Code') {
+      agent any
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build & Test') {
+      parallel {
+        stage('Back-End Build & Test') {
+          agent {
+            docker {
+              image 'maven:3.8.1-adoptopenjdk-11'
+              args '-v $HOME/.m2:/root/.m2' // Cache Maven dependencies
+            }
+          }
+          steps {
+            sh 'mvn clean install'
+          }
+        }
+
+        stage('Front-End Build & Test') {
+          agent {
+            docker {
+              image 'node:16-alpine'
+              args '-v $HOME/.npm:/root/.npm' // Cache NPM packages
+            }
+          }
+          steps {
+            sh 'npm install'
+            sh 'npm run build'
+          }
+        }
+      }
+    }
+
+    stage('Package & Dockerize') {
+      agent any
+      steps {
+        sh 'docker build -t my-backend-app:latest ./backend'
+        sh 'docker build -t my-frontend-app:latest ./frontend'
+      }
+    }
+
+    stage('Push to ECR') {
+      agent any
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-ecr-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh '''
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com
+            docker tag my-backend-app:latest <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/my-backend-app:latest
+            docker tag my-frontend-app:latest <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/my-frontend-app:latest
+            docker push <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/my-backend-app:latest
+            docker push <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/my-frontend-app:latest
+          '''
+        }
+      }
+    }
+
+    stage('Deploy to EKS') {
+      agent any
+      steps {
+        withKubeConfig([credentialsId: 'eks-kubeconfig']) {
+          sh '''
+            kubectl apply -f k8s/backend-deployment.yaml
+            kubectl apply -f k8s/frontend-deployment.yaml
+          '''
+        }
+      }
+    }
+
+  }
+
+  post {
+    success {
+      echo 'Deployment successful!'
+    }
+    failure {
+      echo 'Build or deployment failed.'
+    }
+  }
+}
