@@ -42,11 +42,13 @@
   <plugins>
     <plugin>
       <groupId>org.apache.maven.plugins</groupId>
-      <artifactId>maven-compiler-plugin</artifactId>
-      <version>3.8.1</version> <!-- or latest stable -->
+      <artifactId>maven-surefire-plugin</artifactId>
+      <version>3.0.0-M5</version>
       <configuration>
-        <source>1.8</source>
-        <target>1.8</target>
+        <includes>
+          <include>**/*Test.java</include>
+          <include>**/*Runner.java</include> <!-- add this -->
+        </includes>
       </configuration>
     </plugin>
   </plugins>
