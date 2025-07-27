@@ -13,4 +13,6 @@ import io.cucumber.junit.CucumberOptions;
         monochrome = true
 )
 public class ApiTestRunner {
+            public static void main(String[] args) { ... }
+
 }
