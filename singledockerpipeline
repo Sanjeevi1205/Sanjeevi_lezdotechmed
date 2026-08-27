@@ -1,12 +1,58 @@
 pipeline {
-  agent {
-    docker { image 'node:16-alpine' }
-  }
-  stages {
-    stage('Test') {
-      steps {
-        sh 'node --version'
-      }
+    agent any
+
+    environment {
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = 'YOUR_ACCOUNT_ID'
+        ECR_REPO = 'lezdotechmed'
     }
-  }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t $ECR_REPO .'
+            }
+        }
+
+        stage('Login ECR') {
+            steps {
+                sh '''
+                aws ecr get-login-password --region $AWS_REGION | \
+                docker login --username AWS --password-stdin \
+                $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                '''
+            }
+        }
+
+        stage('Push Image') {
+            steps {
+                sh '''
+                docker tag $ECR_REPO:latest \
+                $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+
+                docker push \
+                $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+                '''
+            }
+        }
+
+        stage('Deploy ECS') {
+            steps {
+                sh '''
+                aws ecs update-service \
+                --cluster YOUR_CLUSTER_NAME \
+                --service YOUR_SERVICE_NAME \
+                --force-new-deployment \
+                --region $AWS_REGION
+                '''
+            }
+        }
+    }
 }
